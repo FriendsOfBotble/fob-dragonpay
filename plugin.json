@@ -1,0 +1,11 @@
+{
+    "id": "friendsofbotble/fob-dragonpay",
+    "name": "Dragonpay Payment Gateway",
+    "namespace": "FriendsOfBotble\\Dragonpay\\",
+    "provider": "FriendsOfBotble\\Dragonpay\\Providers\\DragonpayServiceProvider",
+    "author": "Friends Of Botble",
+    "url": "https://friendsofbotble.com",
+    "version": "1.0.0",
+    "description": "Dragonpay payment gateway integration",
+    "require": ["botble/payment"]
+}
