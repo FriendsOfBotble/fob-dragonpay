@@ -105,7 +105,7 @@ class DragonpayController extends BaseController
 
         if (! $payment) {
             $paymentService->afterMakePayment($data['TxnId']);
-        } else {
+        } elseif ($payment->status != PaymentStatusEnum::COMPLETED) {
             $payment->update([
                 'status' => $status,
             ]);
