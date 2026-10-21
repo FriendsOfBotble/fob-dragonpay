@@ -17,29 +17,51 @@ class DragonpayController extends BaseController
 {
     public function postback(Request $request, Dragonpay $dragonpay, DragonpayPaymentService $paymentService)
     {
-        $dragonpay->handlePostback(function (array $data) use ($paymentService) {
-            if (! Arr::has($data, 'txnid')) {
-                abort(404);
-            }
+        $data = $request->only(['txnid', 'refno', 'status', 'message', 'digest']);
 
-            $payment = Payment::query()
-                ->where('charge_id', $data['txnid'])
-                ->first();
+        if (! Arr::has($data, ['txnid', 'refno', 'status', 'digest']) || ! $this->hasValidDigest($dragonpay, $data)) {
+            abort(403);
+        }
 
-            if (! $payment) {
-                $paymentService->afterMakePayment($data['txnid']);
-            }
+        // Never trust the posted status: ask Dragonpay for the transaction itself.
+        $transaction = $dragonpay->action(new CheckTransactionStatus($data['txnid']));
 
-            $status = match ($data['status']) {
-                Dragonpay::SUCCESS => PaymentStatusEnum::COMPLETED,
-                Dragonpay::FAILED => PaymentStatusEnum::FAILED,
-                default => PaymentStatusEnum::PENDING,
-            };
+        if (! is_array($transaction) || Arr::get($transaction, 'TxnId') !== $data['txnid']) {
+            abort(404);
+        }
 
-            $payment->update([
-                'status' => $status,
+        $payment = Payment::query()
+            ->where('charge_id', $data['txnid'])
+            ->first();
+
+        if (! $payment) {
+            $paymentService->afterMakePayment($data['txnid']);
+
+            return response('result=OK');
+        }
+
+        if ($payment->status == PaymentStatusEnum::COMPLETED) {
+            return response('result=OK');
+        }
+
+        if (
+            Arr::has($transaction, 'Amount')
+            && abs((float) $transaction['Amount'] - (float) $payment->amount) > 0.01
+        ) {
+            logger()->warning('Dragonpay postback amount mismatch.', [
+                'txnid' => $data['txnid'],
+                'expected' => $payment->amount,
+                'received' => $transaction['Amount'],
             ]);
-        }, $request->all());
+
+            abort(400);
+        }
+
+        $payment->update([
+            'status' => $this->mapStatus(Arr::get($transaction, 'Status')),
+        ]);
+
+        return response('result=OK');
     }
 
     public function callback(Request $request, Dragonpay $dragonpay, DragonpayPaymentService $paymentService, BaseHttpResponse $response)
@@ -56,11 +78,7 @@ class DragonpayController extends BaseController
 
         $param1 = json_decode($data['Param1'], true);
 
-        $status = match ($data['Status']) {
-            Dragonpay::SUCCESS => PaymentStatusEnum::COMPLETED,
-            Dragonpay::FAILED => PaymentStatusEnum::FAILED,
-            default => PaymentStatusEnum::PENDING,
-        };
+        $status = $this->mapStatus($data['Status']);
 
         if ($status === PaymentStatusEnum::FAILED) {
             return $response
@@ -84,5 +102,33 @@ class DragonpayController extends BaseController
         return $response
             ->setNextUrl(PaymentHelper::getRedirectURL(Arr::get($param1, 'token')))
             ->setMessage(__('Checkout successfully!'));
+    }
+
+    protected function hasValidDigest(Dragonpay $dragonpay, array $data): bool
+    {
+        $password = (string) Arr::get($dragonpay->getMerchantAccount(), 'password');
+
+        if ($password === '') {
+            return false;
+        }
+
+        $expected = sha1(implode(':', [
+            $data['txnid'],
+            $data['refno'],
+            $data['status'],
+            Arr::get($data, 'message', ''),
+            $password,
+        ]));
+
+        return hash_equals($expected, strtolower((string) $data['digest']));
+    }
+
+    protected function mapStatus(?string $status): string
+    {
+        return match ($status) {
+            Dragonpay::SUCCESS => PaymentStatusEnum::COMPLETED,
+            Dragonpay::FAILED => PaymentStatusEnum::FAILED,
+            default => PaymentStatusEnum::PENDING,
+        };
     }
 }
