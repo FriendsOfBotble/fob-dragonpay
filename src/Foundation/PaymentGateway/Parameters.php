@@ -94,7 +94,7 @@ class Parameters
 
     protected DigestInterface $digestor;
 
-    public function __construct(protected Dragonpay $dragonpay, DigestInterface $digestor = null)
+    public function __construct(protected Dragonpay $dragonpay, ?DigestInterface $digestor = null)
     {
         $this->digestor = is_null($digestor) ? new Sha1Encryption() : $digestor;
     }

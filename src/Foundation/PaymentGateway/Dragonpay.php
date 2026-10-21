@@ -145,7 +145,7 @@ class Dragonpay implements PaymentGatewayInterface
     public function __construct(
         array $merchantAccount,
         bool $sandbox = true,
-        DigestInterface $digestor = null
+        ?DigestInterface $digestor = null
     ) {
         $this->request = new RequestBag();
         $this->channels = new PaymentChannels();

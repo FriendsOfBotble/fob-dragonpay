@@ -111,20 +111,30 @@ class HookServiceProvider extends ServiceProvider
             try {
                 $dragonpay = $this->app->make(Dragonpay::class);
 
+                $amount = number_format($paymentData['amount'], 2, '.', '');
+                $param1 = json_encode([
+                    'order_id' => $paymentData['order_id'],
+                    'token' => $paymentData['checkout_token'],
+                ]);
+                $param2 = json_encode([
+                    'customer_id' => $paymentData['customer_id'],
+                    'customer_type' => $paymentData['customer_type'],
+                ]);
+
+                // Dragonpay stores param1/param2 as Varchar(80); a truncated value would no longer match the
+                // signed txnid and the paid order would be dropped, so refuse up front instead.
+                if (strlen($param1) > 80 || strlen($param2) > 80) {
+                    throw new Exception(__('Dragonpay cannot be used for this checkout, please choose another payment method.'));
+                }
+
                 $token = $dragonpay->getToken([
-                    'txnid' => Str::random(40),
-                    'amount' => number_format($paymentData['amount'], 2, '.', ''),
+                    'txnid' => DragonpayPaymentService::makeSignedTxnId($amount, $paymentData['currency'], $param1, $param2),
+                    'amount' => $amount,
                     'ccy' => $paymentData['currency'],
                     'description' => $paymentData['description'],
                     'email' => $paymentData['address']['email'],
-                    'param1' => json_encode([
-                        'order_id' => $paymentData['order_id'],
-                        'token' => $paymentData['checkout_token'],
-                    ]),
-                    'param2' => json_encode([
-                        'customer_id' => $paymentData['customer_id'],
-                        'customer_type' => $paymentData['customer_type'],
-                    ]),
+                    'param1' => $param1,
+                    'param2' => $param2,
                     'firstName' => Str::of($paymentData['address']['name'])->before(' ')->toString(),
                     'lastName' => Str::of($paymentData['address']['name'])->after(' ')->toString(),
                     'address1' => $paymentData['address']['address'],
