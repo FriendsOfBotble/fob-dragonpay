@@ -19,14 +19,24 @@ class DragonpayController extends BaseController
     {
         $data = $request->only(['txnid', 'refno', 'status', 'message', 'digest']);
 
-        if (! Arr::has($data, ['txnid', 'refno', 'status', 'digest']) || ! $this->hasValidDigest($dragonpay, $data)) {
+        if (! Arr::has($data, ['txnid', 'refno', 'status'])) {
+            abort(403);
+        }
+
+        // Dragonpay is retiring the SHA-1 digest, so it is only checked when it is still sent;
+        // the status itself always comes from the API below.
+        if (! $this->digestIsAcceptable($dragonpay, $data)) {
             abort(403);
         }
 
         // Never trust the posted status: ask Dragonpay for the transaction itself.
         $transaction = $dragonpay->action(new CheckTransactionStatus($data['txnid']));
 
-        if (! is_array($transaction) || Arr::get($transaction, 'TxnId') !== $data['txnid']) {
+        if (
+            ! is_array($transaction)
+            || Arr::get($transaction, 'TxnId') !== $data['txnid']
+            || ! DragonpayPaymentService::hasValidTxnId($transaction)
+        ) {
             abort(404);
         }
 
@@ -35,7 +45,9 @@ class DragonpayController extends BaseController
             ->first();
 
         if (! $payment) {
-            $paymentService->afterMakePayment($data['txnid']);
+            if (! $paymentService->afterMakePayment($data['txnid'])) {
+                return response('result=FAIL_PROCESSING', 500);
+            }
 
             return response('result=OK');
         }
@@ -72,7 +84,7 @@ class DragonpayController extends BaseController
 
         $data = $dragonpay->action(new CheckTransactionStatus($request->input('txnid')));
 
-        if (! $data) {
+        if (! is_array($data) || ! DragonpayPaymentService::hasValidTxnId($data)) {
             abort(404);
         }
 
@@ -104,12 +116,13 @@ class DragonpayController extends BaseController
             ->setMessage(__('Checkout successfully!'));
     }
 
-    protected function hasValidDigest(Dragonpay $dragonpay, array $data): bool
+    protected function digestIsAcceptable(Dragonpay $dragonpay, array $data): bool
     {
+        $digest = strtolower((string) Arr::get($data, 'digest'));
         $password = (string) Arr::get($dragonpay->getMerchantAccount(), 'password');
 
-        if ($password === '') {
-            return false;
+        if ($password === '' || ! preg_match('/^[0-9a-f]{40}$/', $digest)) {
+            return true;
         }
 
         $expected = sha1(implode(':', [
@@ -120,7 +133,7 @@ class DragonpayController extends BaseController
             $password,
         ]));
 
-        return hash_equals($expected, strtolower((string) $data['digest']));
+        return hash_equals($expected, $digest);
     }
 
     protected function mapStatus(?string $status): string

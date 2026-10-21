@@ -111,20 +111,24 @@ class HookServiceProvider extends ServiceProvider
             try {
                 $dragonpay = $this->app->make(Dragonpay::class);
 
+                $amount = number_format($paymentData['amount'], 2, '.', '');
+                $param1 = json_encode([
+                    'order_id' => $paymentData['order_id'],
+                    'token' => $paymentData['checkout_token'],
+                ]);
+                $param2 = json_encode([
+                    'customer_id' => $paymentData['customer_id'],
+                    'customer_type' => $paymentData['customer_type'],
+                ]);
+
                 $token = $dragonpay->getToken([
-                    'txnid' => Str::random(40),
-                    'amount' => number_format($paymentData['amount'], 2, '.', ''),
+                    'txnid' => DragonpayPaymentService::makeSignedTxnId($amount, $paymentData['currency'], $param1, $param2),
+                    'amount' => $amount,
                     'ccy' => $paymentData['currency'],
                     'description' => $paymentData['description'],
                     'email' => $paymentData['address']['email'],
-                    'param1' => json_encode([
-                        'order_id' => $paymentData['order_id'],
-                        'token' => $paymentData['checkout_token'],
-                    ]),
-                    'param2' => json_encode([
-                        'customer_id' => $paymentData['customer_id'],
-                        'customer_type' => $paymentData['customer_type'],
-                    ]),
+                    'param1' => $param1,
+                    'param2' => $param2,
                     'firstName' => Str::of($paymentData['address']['name'])->before(' ')->toString(),
                     'lastName' => Str::of($paymentData['address']['name'])->after(' ')->toString(),
                     'address1' => $paymentData['address']['address'],
