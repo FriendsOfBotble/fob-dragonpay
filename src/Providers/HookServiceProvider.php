@@ -121,6 +121,12 @@ class HookServiceProvider extends ServiceProvider
                     'customer_type' => $paymentData['customer_type'],
                 ]);
 
+                // Dragonpay stores param1/param2 as Varchar(80); a truncated value would no longer match the
+                // signed txnid and the paid order would be dropped, so refuse up front instead.
+                if (strlen($param1) > 80 || strlen($param2) > 80) {
+                    throw new Exception(__('Dragonpay cannot be used for this checkout, please choose another payment method.'));
+                }
+
                 $token = $dragonpay->getToken([
                     'txnid' => DragonpayPaymentService::makeSignedTxnId($amount, $paymentData['currency'], $param1, $param2),
                     'amount' => $amount,

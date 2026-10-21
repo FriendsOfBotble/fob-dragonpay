@@ -37,14 +37,15 @@ class DragonpayPaymentService extends PaymentServiceAbstract
      */
     public static function makeSignedTxnId(string $amount, string $currency, string $param1, string $param2): string
     {
-        $nonce = Str::random(8);
+        // Lowercase so the check survives if Dragonpay changes the case of the echoed TxnId.
+        $nonce = strtolower(Str::random(8));
 
         return $nonce . static::signature($nonce, $amount, $currency, $param1, $param2);
     }
 
     public static function hasValidTxnId(array $transaction): bool
     {
-        $txnId = (string) Arr::get($transaction, 'TxnId');
+        $txnId = strtolower((string) Arr::get($transaction, 'TxnId'));
 
         if (strlen($txnId) !== 40) {
             return false;
