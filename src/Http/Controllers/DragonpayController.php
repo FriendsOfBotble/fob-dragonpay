@@ -46,14 +46,14 @@ class DragonpayController extends BaseController
 
         if (! $payment) {
             if (! $paymentService->afterMakePayment($data['txnid'])) {
-                return response('result=FAIL_PROCESSING', 500);
+                return response('result=FAIL_PROCESSING', 500, ['Content-Type' => 'text/plain']);
             }
 
-            return response('result=OK');
+            return response('result=OK', 200, ['Content-Type' => 'text/plain']);
         }
 
         if ($payment->status == PaymentStatusEnum::COMPLETED) {
-            return response('result=OK');
+            return response('result=OK', 200, ['Content-Type' => 'text/plain']);
         }
 
         if (
@@ -73,7 +73,7 @@ class DragonpayController extends BaseController
             'status' => $this->mapStatus(Arr::get($transaction, 'Status')),
         ]);
 
-        return response('result=OK');
+        return response('result=OK', 200, ['Content-Type' => 'text/plain']);
     }
 
     public function callback(Request $request, Dragonpay $dragonpay, DragonpayPaymentService $paymentService, BaseHttpResponse $response)
